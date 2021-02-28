@@ -1,0 +1,5 @@
+find_package(Pangolin REQUIRED)
+set(CMAKE_CXX_FLAGS "-std=c++11")
+include_directories(${Pangolin_INCLUDE_DIRS})
+add_executable(trajectoryError TrajectoryError.cpp)
+target_link_libraries(trajectoryError ${Pangolin_LIBRARIES})

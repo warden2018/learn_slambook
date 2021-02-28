@@ -1,0 +1,13 @@
+ch3/plotTrajectory/build
+ch3/useEigen/build
+ch3/useGeometry/build
+ch3/visualizeGeometry/build
+ch4/build/*
+ch4/TrajectoryError/build
+ch5/ImageBasics/build
+ch5/rgbd/build
+ch5/stereo/build
+ch5/UndistortImage/build
+ch6/build
+ch7/build
+
