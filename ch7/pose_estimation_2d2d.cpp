@@ -148,6 +148,37 @@ void pose_estimation_2d2d(vector<KeyPoint> &keypoints_1,
 
     //-- 从本质矩阵中恢复旋转和平移信息.
   // 此函数仅在Opencv3中提供
+  /** @overload
+    @param E The input essential matrix.
+    @param points1 Array of N 2D points from the first image. The point coordinates should be
+    floating-point (single or double precision).
+    @param points2 Array of the second image points of the same size and format as points1 .
+    @param R Output rotation matrix. Together with the translation vector, this matrix makes up a tuple
+    that performs a change of basis from the first camera's coordinate system to the second camera's
+    coordinate system. Note that, in general, t can not be used for this tuple, see the parameter
+    description below.
+    @param t Output translation vector. This vector is obtained by @ref decomposeEssentialMat and
+    therefore is only known up to scale, i.e. t is the direction of the translation vector and has unit
+    length.
+    @param focal Focal length of the camera. Note that this function assumes that points1 and points2
+    are feature points from cameras with same focal length and principal point.
+    @param pp principal point of the camera.
+    @param mask Input/output mask for inliers in points1 and points2. If it is not empty, then it marks
+    inliers in points1 and points2 for then given essential matrix E. Only these inliers will be used to
+    recover pose. In the output mask only inliers which pass the cheirality check.
+
+    This function differs from the one above that it computes camera intrinsic matrix from focal length and
+    principal point:
+
+    \f[A =
+    \begin{bmatrix}
+    f & 0 & x_{pp}  \\
+    0 & f & y_{pp}  \\
+    0 & 0 & 1
+    \end{bmatrix}\f]
+ */
+
+//从上面的注释看，R和t分别是从1转换到2的变换矩阵。在后面的三角测量中，可以直接用
   recoverPose(essential_matrix, points_1, points_2, R, t, focal_length, principal_point);
   cout << "R is " << endl << R << endl;
   cout << "t is " << endl << t << endl;
