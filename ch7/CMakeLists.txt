@@ -13,7 +13,7 @@ find_package(Sophus REQUIRED)
 find_package(G2O REQUIRED)
 include_directories(${G2O_INCLUDE_DIRS})
 include_directories(${OpenCV_INCLUDE_DIRS})
-include_directories("usr/include/eigen3")
+include_directories("/usr/local/include/eigen3")
 
 add_executable(feature_extraction Orb_cv.cpp)
 add_executable(feature_extraction_self Orb_self.cpp)

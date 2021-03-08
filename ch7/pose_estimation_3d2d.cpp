@@ -105,8 +105,10 @@ int main(int argc,char* argv[]) {
     }
     bundleAdjustmentGaussNewton(pts_3d_eigen,pts_2d_eigen,K,pose_gn);
 
-
-
+    Sophus::SE3d pose_g2o;
+    bundleAdjustmentG2O(pts_3d_eigen,pts_2d_eigen,K,pose_g2o);
+    cout << "Using g2o the camera pose estimation is: " << endl
+            << pose_g2o.matrix() << endl;
     //-- 验证E=t^R*scale
     // Mat R, t;
     // Mat t_x =
@@ -333,7 +335,7 @@ void bundleAdjustmentGaussNewton(
         cout << "Iteration [" << iter << "] cost = [" << cost << "]." << endl;
     }
 
-    cout << "Estimated pose using gauss-newton: " << pose.matrix() << endl;
+    cout << "Estimated pose using gauss-newton: \n" << pose.matrix() << endl;
 }
 
 //定义g2o下的节点和边，借助g2o来优化求相机的运动
@@ -367,7 +369,7 @@ public:
         const Sophus::SE3d T = v->estimate();
         Eigen::Vector3d pose_pixel = _K * (T * _pos3d); //未归一化的像素坐标系
         pose_pixel /= pose_pixel[2]; // 归一化像素坐标
-        _error = _measurement - pose_pixel.head<2>();//误差项，是一个2*1的向量
+        _error = pose_pixel.head<2>() - _measurement;//误差项，是一个2*1的向量.要注意，误差项是谁减去谁（这里是预测值减去观测值），要和下面的雅克比矩阵对应上。
     }
 
     //Jacobian -- 这里需要准备的数据是计算雅克比矩阵必须的。在这个case里面，我们需要的是相机坐标系下面的X,Y,Z,相机内参数
@@ -377,8 +379,8 @@ public:
         Eigen::Vector3d pos_cam = T * _pos3d; //X',Y',Z'
         double fx = _K(0,0);
         double fy = _K(1,1);
-        double cx = _K(0,2);
-        double cy = _K(1,2);
+        //double cx = _K(0,2);
+        //double cy = _K(1,2);
         double X = pos_cam[0];
         double Y = pos_cam[1];
         double Z = pos_cam[2];
@@ -440,7 +442,5 @@ void bundleAdjustmentG2O(const VecVector3d &points_3d,const VecVector2d &points_
     optimizer.optimize(10);
     cout << "pose estimation by g2o = \n" << vertex_pose->estimate().matrix() << endl;
     pose = vertex_pose->estimate();
-
-    
 }
 
