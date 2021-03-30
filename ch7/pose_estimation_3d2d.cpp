@@ -280,7 +280,7 @@ void bundleAdjustmentGaussNewton(
         cost = 0;
         for(int i = 0; i < points_3d.size();i++) {
             Eigen::Vector3d pc_3d = pose * points_3d[i]; //世界坐标系转换到相机坐标系
-            Eigen::Matrix<double,2,6> J; //像素坐标系对相机位姿的雅克比矩阵的转置，实际上雅克比矩是（6行2列）
+            Eigen::Matrix<double,2,6> J; //像素坐标系对相机位姿的雅克比矩阵的转置，实际上雅克比矩是（6行2列）====e(x+\delta x)=e(x)+JT(x)\delta x
             Eigen::Vector2d project_point(fx * pc_3d[0] / pc_3d[2] + cx,
                                             fy * pc_3d[1] / pc_3d[2] + cy); //相机坐标系转换到像素坐标系
             //Eigen::Vector2d e = points_2d[i] - project_point;//测量值减去投影值

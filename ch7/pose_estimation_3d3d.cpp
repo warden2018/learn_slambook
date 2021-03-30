@@ -42,20 +42,10 @@ void pose_estimiation_3d3d(const vector<Point3f> &pts1,
                             Mat &R,
                             Mat &t);
 
-//BA by GaussNewton
-void bundleAdjustmentGaussNewton(
-    const VecVector3d &points_3d,
-    const VecVector2d &points_2d,
-    const Mat &K,
-    Sophus::SE3d &pose);
-
-
-void bundleAdjustmentG2O(
-    const VecVector3d &points_3d,
-    const VecVector2d &points_2d,
-    const Mat &K,
-    Sophus::SE3d &pose);
-
+void bundleAdjustment(const vector<Point3f> &pts1,
+                            const vector<Point3f> &pts2,
+                            Mat &R,
+                            Mat &t);
 
 int main(int argc,char* argv[]) {
     // if(argc != 4) {
@@ -79,7 +69,6 @@ int main(int argc,char* argv[]) {
     Mat K = (Mat_<double>(3, 3) << 520.9, 0, 325.1, 0, 521.0, 249.7, 0, 0, 1);
     vector<Point3f> pts1_3d;
     vector<Point3f> pts2_3d;
-    vector<Point2f> pts_2d;
     for(DMatch m : matches) {
         ushort d1 = depth_image1.ptr<unsigned short>(int(keypoints_1[m.queryIdx].pt.y))[int(keypoints_1[m.queryIdx].pt.x)]; // 根据特征点的y x（行 列）坐标找到深度图当中的深度信息
         ushort d2 = depth_image2.ptr<unsigned short>(int(keypoints_2[m.trainIdx].pt.y))[int(keypoints_2[m.trainIdx].pt.x)]; // 根据特征点的y x（行 列）坐标找到深度图当中的深度信息
@@ -97,28 +86,9 @@ int main(int argc,char* argv[]) {
         Point2f p_cam_trans = Point2f(keypoints_2[m.trainIdx].pt);//这里是第二张图像像素坐标
         pts1_3d.push_back(p_3d1);
         pts2_3d.push_back(p_3d2);
-        pts_2d.push_back(p_cam_trans);
     }
 
-    cout << "3D-2D pairs: " << pts_2d.size() << endl;
     cout << "3D-3D pairs: " << pts1_3d.size() << endl;
-
-    //通过高斯-牛顿BA求解最优的相机运动
-    Sophus::SE3d pose_gn; //相机运动初始化时候，这个数值是I.这个值其实就是第一张图像拍摄时候相机的运动（我们定义的世界坐标系起始就在这个坐标系下面）
-    cout << "Before gaussBewton BA, the pose is: " << pose_gn.matrix() << endl;
-    VecVector3d pts_3d_eigen;
-    VecVector2d pts_2d_eigen;
-
-    for(int i = 0; i < pts_2d.size(); i++) {
-        pts_3d_eigen.push_back(Eigen::Vector3d(pts1_3d[i].x,pts1_3d[i].y,pts1_3d[i].z));
-        pts_2d_eigen.push_back(Eigen::Vector2d(pts_2d[i].x,pts_2d[i].y));
-    }
-    bundleAdjustmentGaussNewton(pts_3d_eigen,pts_2d_eigen,K,pose_gn);
-
-    Sophus::SE3d pose_g2o;
-    bundleAdjustmentG2O(pts_3d_eigen,pts_2d_eigen,K,pose_g2o);
-    cout << "Using g2o the camera pose estimation is: " << endl
-            << pose_g2o.matrix() << endl;
 
     //3D-3D ICP 配准
     Mat R_svd,t_svd;
@@ -127,6 +97,12 @@ int main(int argc,char* argv[]) {
     cout << "3D-3D using SVD method, t: \n" << t_svd << endl;
     cout << "R_inv = " << R_svd.t() << endl;
     cout << "t_inv = " << -R_svd.t() * t_svd << endl;
+    Mat R_g2o,t_g2o;
+    bundleAdjustment(pts1_3d,pts2_3d,R_g2o,t_g2o);
+    cout << "3D-3D using g2o method, R: \n" << R_g2o << endl;
+    cout << "3D-3D using g2o method, t: \n" << t_g2o << endl;
+    cout << "R_inv = " << R_g2o.t() << endl;
+    cout << "t_inv = " << -R_g2o.t() * t_g2o << endl;
     //-- 验证E=t^R*scale
     // Mat R, t;
     // Mat t_x =
@@ -269,87 +245,9 @@ void pose_estimiation_3d3d(const vector<Point3f> &pts1,
             t_(2,0));
 }
 
-void bundleAdjustmentGaussNewton(
-                const VecVector3d &points_3d,
-                const VecVector2d &points_2d,
-                const Mat &K,
-                Sophus::SE3d &pose) {
-    typedef Eigen::Matrix<double, 6, 1> Vector6d;
-    const int iterations = 10;
-    
-    double fx = K.at<double>(0,0);
-    double fy = K.at<double>(1,1);
-    double cx = K.at<double>(0,2);
-    double cy = K.at<double>(1,2);
-
-    double cost = 0;
-    double lastcost = 0;
-
-    for(int iter = 0; iter < iterations; iter++) {
-        Eigen::Matrix<double,6,6> H = Eigen::Matrix<double,6,6>::Zero(); //高斯-牛顿法中的J*JT
-        Vector6d b = Vector6d::Zero();
-        cost = 0;
-        for(int i = 0; i < points_3d.size();i++) {
-            Eigen::Vector3d pc_3d = pose * points_3d[i]; //世界坐标系转换到相机坐标系
-            Eigen::Matrix<double,2,6> J; //像素坐标系对相机位姿的雅克比矩阵的转置，实际上雅克比矩是（6行2列）
-            Eigen::Vector2d project_point(fx * pc_3d[0] / pc_3d[2] + cx,
-                                            fy * pc_3d[1] / pc_3d[2] + cy); //相机坐标系转换到像素坐标系
-            //Eigen::Vector2d e = points_2d[i] - project_point;//测量值减去投影值
-            Eigen::Vector2d e = project_point - points_2d[i]; // 投影值减去测量值
-            //更新cost
-            cost += e.squaredNorm();
-
-            if(pc_3d[2] == 0){
-                cout << "The depth of 3D point in camera shouldn't be 0! Skip this point." << endl;
-                continue;
-            }
-            double inv_z = 1.0 / pc_3d[2];
-            double inv_z2 = inv_z * inv_z;
-
-            J << fx * inv_z 
-                , 0 
-                , - fx * pc_3d[0] *inv_z2 
-                , - fx * pc_3d[0] * pc_3d[1] * inv_z2
-                , fx + fx * pc_3d[0] * pc_3d[0] * inv_z2
-                , - fx * pc_3d[1] * inv_z
-                , 0
-                , fy * inv_z
-                , - fy * pc_3d[1] * inv_z2
-                , -fy - fy * pc_3d[1] * pc_3d[1] * inv_z2
-                , fy * pc_3d[0] * pc_3d[1] * inv_z2
-                , fy * pc_3d[0] * inv_z;
-
-            //这里雅克比矩阵是6行2列的，2列是因为求解像素误差是按照行和列两个维度计算的，所以前面有一步骤是把这个中间计算结果再一次求开平方
-            H += J.transpose() * J;
-            b += -J.transpose() * e; 
-        }
-        //平移在前，旋转在后
-        Vector6d delta_x;
-        delta_x = H.ldlt().solve(b);
-        if(isnan(delta_x[0])) {
-            cout << "The increment is zero! Not normal." << endl;
-            break;
-        }
-
-        if(iter >0 && cost >= lastcost) {
-            cout << "This iteration cost [" << cost << "] is larger than last [" << lastcost << "]." << endl;
-            break;
-        }
-
-        //上面的判断都不满足，说明是一次正常的迭代过程，需要对pose进行更新，使用Sophus的SE(3)方法
-        pose = Sophus::SE3d::exp(delta_x) * pose;
-        lastcost = cost;
-        if(delta_x.norm() < 1e-6) {
-            cout << "converge!"<< endl;
-            break;
-        }
-        cout << "Iteration [" << iter << "] cost = [" << cost << "]." << endl;
-    }
-
-    cout << "Estimated pose using gauss-newton: \n" << pose.matrix() << endl;
-}
-
 //定义g2o下的节点和边，借助g2o来优化求相机的运动
+//在这个模型中，只有一个节点就是相机的位姿变换，这个位姿变换是从cam2到cam1，所以观测是cam1,构造边时候传递进去的是cam2下面的坐标
+//误差模型就是p_cam1 - T * p_cam2
 class PoseVertex : public g2o::BaseVertex<6,Sophus::SE3d> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -369,36 +267,32 @@ public:
     virtual bool write(ostream &out) const {}
 };
 
-class ProjectionEdge : public g2o::BaseUnaryEdge<2, Eigen::Vector2d, PoseVertex> {
+class ProjectXYZRGBDOnlyEdge : public g2o::BaseUnaryEdge<3, Eigen::Vector3d, PoseVertex> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    ProjectionEdge(const Eigen::Vector3d &pos,const Eigen::Matrix3d &K) : _pos3d(pos),_K(K){}
+    ProjectXYZRGBDOnlyEdge(const Eigen::Vector3d &point) : _point(point){}
 
     virtual void computeError() override {
         const PoseVertex* v = static_cast<const PoseVertex *> (_vertices[0]);
         const Sophus::SE3d T = v->estimate();
-        Eigen::Vector3d pose_pixel = _K * (T * _pos3d); //未归一化的像素坐标系
-        pose_pixel /= pose_pixel[2]; // 归一化像素坐标
-        _error = pose_pixel.head<2>() - _measurement;//误差项，是一个2*1的向量.要注意，误差项是谁减去谁（这里是预测值减去观测值），要和下面的雅克比矩阵对应上。
+        _error = _measurement - T * _point;//误差项，是一个3*1的向量.要注意，误差项是谁减去谁（这里是观测值减去预测值p_cam1 - T * p_cam2），要和下面的雅克比矩阵对应上。
     }
 
-    //Jacobian -- 这里需要准备的数据是计算雅克比矩阵必须的。在这个case里面，我们需要的是相机坐标系下面的X,Y,Z,相机内参数
+    //Jacobian -- 这里需要准备的数据是计算雅克比矩阵必须的。在这个case里面，我们需要的是相机坐标系下面的X,Y,Z
     virtual void linearizeOplus() override {
         const PoseVertex* v = static_cast<const PoseVertex *> (_vertices[0]);
         const Sophus::SE3d T = v->estimate();
-        Eigen::Vector3d pos_cam = T * _pos3d; //X',Y',Z'
-        double fx = _K(0,0);
-        double fy = _K(1,1);
-        //double cx = _K(0,2);
-        //double cy = _K(1,2);
-        double X = pos_cam[0];
-        double Y = pos_cam[1];
-        double Z = pos_cam[2];
-        double Z_2 = Z * Z;
-        _jacobianOplusXi <<
-            fx / Z, 0, -fx * X / Z_2, -fx * X * Y / Z_2, fx + fx * X * X / Z_2, -fx * Y / Z,
-            0, fy / Z, -fy * Y / Z_2, -fy - fy * Y * Y / Z_2, fy * X * Y / Z_2, fy * X / Z;
+        Eigen::Vector3d xyz_trans = T * _point;
+        //雅克比矩阵：3*6.误差是xyz三个方向，相机变换是SE3的，六个维度
+        //下面的操作，是Eigen提供的矩阵块赋值，https://eigen.tuxfamily.org/dox/group__TutorialBlockOperations.html
+        //<3,3>代表了3*3的块，后面的括号是表示这个块左上角的元素在原矩阵当中的索引位置。具体到这里，就是前三列是负单位矩阵,
+        //后三列是变换后的p'的反对称矩阵，其实是so(3)的。
+        //写到这里不得不再次回到李群李代数那一章节，复习了一下指数映射和对数映射。SO(3)上才是旋转矩阵，so(3)上要么是三维的向量，要么是这个三维向量对应
+        //的反对称矩阵。还记得罗德里格斯公式吗？罗德里格斯公式是建立so(3) -> SO(3)的快捷计算的，只需要首先把三维向量单位化并且求模，代入公式就可以求出
+        //SO(3)下面的旋转矩阵
+        _jacobianOplusXi.block<3,3>(0,0) = - Eigen::Matrix3d::Identity();
+        _jacobianOplusXi.block<3,3>(0,3) = Sophus::SO3d::hat(xyz_trans);
     }
 
     virtual bool read(istream &in) {}
@@ -406,12 +300,10 @@ public:
     virtual bool write(ostream &out) const {}
 
 public:
-Eigen::Vector3d _pos3d;
-Eigen::Matrix3d _K;
+Eigen::Vector3d _point;
 };
 
-void bundleAdjustmentG2O(const VecVector3d &points_3d,const VecVector2d &points_2d,const Mat &K,Sophus::SE3d &pose) {
-    // 构建图优化，先设定g2o
+void bundleAdjustment(const vector<Point3f> &pts1,const vector<Point3f> &pts2,Mat &R,Mat &t) {
     typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>> BlockSolverType;  // pose is 6, landmark is 3
     typedef g2o::LinearSolverDense<BlockSolverType::PoseMatrixType> LinearSolverType; // 线性求解器类型
     // 梯度下降方法，可以从GN, LM, DogLeg 中选
@@ -428,23 +320,17 @@ void bundleAdjustmentG2O(const VecVector3d &points_3d,const VecVector2d &points_
     optimizer.addVertex(vertex_pose);
 
     Eigen::Matrix3d K_eigen;
-
-    K_eigen << 
-            K.at<double>(0,0), K.at<double>(0,1),K.at<double>(0,2),
-            K.at<double>(1,0), K.at<double>(1,1),K.at<double>(1,2),
-            K.at<double>(2,0), K.at<double>(2,1),K.at<double>(2,2);
-
     //edges
     int index = 1;
-    for (size_t i = 0; i< points_2d.size(); ++i) {
-        auto p2d = points_2d[i];
-        auto p3d = points_3d[i];
-
-        ProjectionEdge *edge = new ProjectionEdge(p3d,K_eigen);
+    for (size_t i = 0; i< pts1.size(); ++i) {
+        auto p1 = pts1[i];
+        auto p2 = pts2[i];
+        Eigen::Vector3d eigen_point3d(p2.x,p2.y,p2.z);
+        ProjectXYZRGBDOnlyEdge *edge = new ProjectXYZRGBDOnlyEdge(eigen_point3d);
         edge->setId(index);
         edge->setVertex(0,vertex_pose);
-        edge->setMeasurement(p2d);
-        edge->setInformation(Eigen::Matrix2d::Identity());
+        edge->setMeasurement(Eigen::Vector3d(pts1[i].x,pts1[i].y,pts1[i].z));//p_cam1 - T * p_cam2
+        edge->setInformation(Eigen::Matrix3d::Identity());
         optimizer.addEdge(edge);
         index++;
     }
@@ -452,6 +338,15 @@ void bundleAdjustmentG2O(const VecVector3d &points_3d,const VecVector2d &points_
     optimizer.initializeOptimization();
     optimizer.optimize(10);
     cout << "pose estimation by g2o = \n" << vertex_pose->estimate().matrix() << endl;
-    pose = vertex_pose->estimate();
+    
+    //把结果转换成cv::Mat
+    Eigen::Matrix3d R_ = vertex_pose->estimate().rotationMatrix();
+    Eigen::Vector3d t_ = vertex_pose->estimate().translation();
+
+    R = (Mat_<double>(3,3) << R_(0,0), R_(0,1),R_(0,2),
+                                R_(1,0), R_(1,1),R_(1,2),
+                                R_(2,0), R_(2,1),R_(2,2));
+
+    t = (Mat_<double>(3,1) << t_(0,0),t_(1,0),t_(2,0));
 }
 
