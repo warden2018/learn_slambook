@@ -178,7 +178,7 @@ void OpticalFlowTracker::calculateOpticalFlow_GN(const Range &range) {
                 break;
             }
 
-            if(iter > 0 && cost > lastcost) { //如果本次迭代cost更大，说明结果不好，这次的更新不采纳，重新迭代
+            if(iter > 0 && cost > lastcost) { //如果本次迭代cost更大，说明结果不好，这次的更新不采纳，终止本次迭代
                 break;
             }
 
@@ -187,7 +187,7 @@ void OpticalFlowTracker::calculateOpticalFlow_GN(const Range &range) {
             lastcost = cost;
             success = true;
 
-            if(update.norm() < 1e-2) {
+            if(update.norm() < 1e-2) { //更新量较小，认为达到最优，终止迭代
                 //cout << "Converge." << endl;
                 break;
             }
@@ -246,35 +246,45 @@ int main(int argc, char* argv[]) {
     vector<bool> success_single;
     vector<KeyPoint> kpts2_multiple;
     vector<bool> success_multiple;
-    bool inverse = false;
+    bool inverse = true;
     bool has_init = false;
 
 
-    Ptr<GFTTDetector> detector = GFTTDetector::create(500,0.01,15); //TODO: 这几个参数代表什么意思？
+    Ptr<GFTTDetector> detector = GFTTDetector::create(500,0.01,20); //TODO: 这几个参数代表什么意思？
     detector->detect(img_1,kpts1); //检测到第一张图的特征点，存储在ktps1里面
     
-    //跟踪第二张图里面ktps1在哪里
+    //跟踪第二张图里面ktps1在第二张图上面哪里
     //线性最小二乘方法可以在OpticalFlowSingleLevel里面调整
     
     //第一种方法是单层光流single level optical flow
     cout << "Key Points detected in imge1 size is: " << kpts1.size() << endl;
+    chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
     OpticalFlowSingleLevel(img_1,img_2,kpts1,kpts2_single,success_single,inverse,has_init);
-    cout << "key points by single optical flow size is: " << kpts2_single.size();
-    //第二种方法是多层光流 multiple optical flow
+    chrono::steady_clock::time_point t2 = chrono::steady_clock::now();
+    auto time_used_single = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+    cout << "Time cost by single optical flow is: " << time_used_single.count() << endl;
+
+
+    //第二种方法是多层金字塔光流 multiple optical flow
+    t1 = chrono::steady_clock::now();
     OpticalFlowMultiLevel(img_1,img_2,kpts1,kpts2_multiple,success_multiple,inverse);
-    cout << "key points by single optical flow size is: " << kpts2_single.size();
+    //cout << "key points by single optical flow size is: " << kpts2_single.size();
+    t2 = chrono::steady_clock::now();
+    auto time_used_multiple = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+    cout << "Time cost by multiple optical flow is: " << time_used_multiple.count() << endl;
+
     //第三种方法Opencv
     vector<Point2f> pt1, pt2;
     for (auto &kp: kpts1) pt1.push_back(kp.pt);
     vector<uchar> status;
     vector<float> error;
-    chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
+    t1 = chrono::steady_clock::now();
     cv::calcOpticalFlowPyrLK(img_1, img_2, pt1, pt2, status, error);
-    chrono::steady_clock::time_point t2 = chrono::steady_clock::now();
-    auto time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
-    cout << "optical flow by opencv: " << time_used.count() << endl;
-    //画出来各个方法的效果
-    /*
+    t2 = chrono::steady_clock::now();
+    auto time_used_opencv = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+    cout << "Time cost by opencv: " << time_used_opencv.count() << endl;
+
+    /*画出来各个方法的效果
     * 起点是I1的特征点，终点是估计出来的对应特征点
     */
     Mat img2_single;
@@ -322,11 +332,11 @@ void OpticalFlowSingleLevel(const Mat &img1,const Mat &img2,const vector<KeyPoin
     kp2.resize(kp1.size());
     success.resize(kp1.size());
     OpticalFlowTracker tracker(img1,img2,kp1,kp2,success,inverse,has_initial_guess);
-    cout << "tracker established!" << endl << "kp2 size: " << kp2.size() << endl;
+    //cout << "tracker established!" << endl << "kp2 size: " << kp2.size() << endl;
     parallel_for_(Range(0,kp1.size()),
                 std::bind(&OpticalFlowTracker::calculateOpticalFlow_GN,&tracker,placeholders::_1));
 
-    cout << "Finished calculateOpticalFlow: kp2 first element: " << kp2[0].pt.x << endl;
+    //cout << "Finished calculateOpticalFlow: kp2 first element: " << kp2[0].pt.x << endl;
 }
 
 void OpticalFlowMultiLevel(const Mat &img1,const Mat &img2,const vector<KeyPoint> &kp1,

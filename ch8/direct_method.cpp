@@ -11,9 +11,15 @@
 
 /*
  * 直接法demo
- * 已知的是若干图像，图像上对应的像素点的深度，计算相机运动SE3
+ * 已知的是若干图像，第一张图位姿对应的视差图，计算相机运动SE3
  * 为了获取深度，demo中通过disparity image计算像素的深度，这个深度坐标其实是拍摄第一张图时候相机坐标系下的坐标。
  * 和原版本不同的是，代码添加了对GFlag的支持，能够通过conf/direct_method.conf传递参数，避免为了修改参数重复编译代码
+ * 如何构建这个项目
+ * mkdir build
+ * cd build
+ * cmake ..
+ * make
+ * 在build这个文件夹里面就可以看到编译好的二进制文件
  * 如何运行这个demo：
  * cd build
  * ./direct_method -flagfile=../conf/direct_method.conf
@@ -81,8 +87,11 @@ inline bool CreatePyramids(const Mat& img, const int pyramids, const double pyra
     }
 }
 
-//为了实现并行化计算雅克比矩阵写的类,该类每次计算使用的是一张图像里面随机选择出来的
-//那些点周围的patch
+/**
+ * 为了实现并行化计算雅克比矩阵写的类,该类每次计算使用的是一张图像里面随机选择出来的
+ * 那些点周围的patch，每一个像素点都计算一个Jacobian和b(Accumulate_jacobian)
+ * 方法是主要的实现过程。
+ */
 class JacobianAccumulator {
 public:
     JacobianAccumulator(
@@ -107,7 +116,7 @@ public:
     VecVector2d Get_projectedPoints() const {return projected_points_;}
 
 /**
- * Set Hessian cost and bias to zero.
+ * Set Hessian, cost and bias to zero.
  *
  */
     void Reset() {
@@ -116,27 +125,20 @@ public:
         cost_ = 0;
     }
 
-
 private:
     const cv::Mat& img1_;
     const cv::Mat& img2_;
     const VecVector2d& pixels_points_; //相机1的pixel坐标
     const vector<double>& depths_;
     Sophus::SE3d &T21_;//相机1的坐标左乘该矩阵可以得到在相机2坐标系下的坐标（3D）
-//    VecVector2d projected_points_; //相机1里面选出来的那些像素点对应的三维点投影到相机2像素上面的坐标
-//                                    //用来评判相机1到相机2的转换矩阵的结果怎么样
-//
-//    std::mutex hessian_mutex_;
-//    Matrix6d H_ = Matrix6d::Zero();
-//    Vector6d b_ = Vector6d::Zero();
-//    double cost_ = 0;
+    VecVector2d projected_points_; //相机1里面选出来的那些像素点对应的三维点投影到相机2像素上面的坐标
+                                    //用来评判相机1到相机2的转换矩阵的结果怎么样
 
-    mutable VecVector2d projected_points_; // projected points
+    std::mutex hessian_mutex_;
+    Matrix6d H_ = Matrix6d::Zero();
+    Vector6d b_ = Vector6d::Zero();
+    double cost_ = 0;
 
-    mutable std::mutex hessian_mutex_;
-    mutable Matrix6d H_ = Matrix6d::Zero();
-    mutable Vector6d b_ = Vector6d::Zero();
-    mutable double cost_ = 0;
 };
 
 void JacobianAccumulator::Accumulate_jacobian(const cv::Range &range) {
@@ -146,11 +148,8 @@ void JacobianAccumulator::Accumulate_jacobian(const cv::Range &range) {
     //cout << "depths_ size: " << depths_.size() << endl;
     //cout << "img2_ size. cols: " << img2_.cols << ";rows: " << img2_.rows << endl;
     //遍历所有image1随机产生的像素点
-    for(size_t i = range.start; i < range.end; i++) {
-        Matrix6d hessian = Matrix6d::Zero(); //每一个patch对应一个hessain
-        Vector6d bias = Vector6d::Zero();//每一个patch对应一个bias
-        double cost_tmp = 0;//每一个patch对应一个cost_tmp
 
+    for(size_t i = range.start; i < range.end; i++) {
         //1.计算三维点投影到第二张图像上的像素坐标
         //计算相机1坐标系下的三维点坐标
         Eigen::Vector3d point_3d_inC1 =
@@ -175,26 +174,30 @@ void JacobianAccumulator::Accumulate_jacobian(const cv::Range &range) {
             continue;
         }
 
+        Matrix6d hessian = Matrix6d::Zero(); //每一个patch对应一个hessain
+        Vector6d bias = Vector6d::Zero();//每一个patch对应一个bias
+        double cost_tmp = 0;//每一个patch对应一个cost_tmp
 
         projected_points_[i] = Eigen::Vector2d(u,v); //给成员赋值.如果上面的两个检查没有通过，
-        cout << "projected_points_" << i << "th element is: x: " << projected_points_[i].x() << "y: "
-                << projected_points_[i].y() << endl;
+//        cout << "projected_points_" << i << "th element is: x: " << projected_points_[i].x() << "y: "
+//                << projected_points_[i].y() << endl;
 
         good_points_inC2++; //每在camera2上面找到有效的三维点，那么就把这个变量加1
         //准备一下求灰度关于李代数的雅克比计算需要的camera2下面的坐标，其实就是换一个名字，和公式推导保持一致
         double X = point_3d_inC2[0];
         double Y = point_3d_inC2[1];
         double Z = point_3d_inC2[2];
-        double inverse_Z = 1 / Z;
+        double inverse_Z = 1.0 / Z;
         double inverse_Z2 = inverse_Z * inverse_Z;
 
         //2. 计算光度误差和雅克比矩阵
-        for(int x = - FLAGS_halfPatchSize; x < FLAGS_halfPatchSize; x++) {
-            for(int y = - FLAGS_halfPatchSize; y < FLAGS_halfPatchSize;y++) {
+        for(int x = - FLAGS_halfPatchSize; x <= FLAGS_halfPatchSize; x++) {
+            for(int y = - FLAGS_halfPatchSize; y <= FLAGS_halfPatchSize;y++) {
                 //每一个点灰度值误差
                 double error = GetPixelValue(img1_,pixels_points_[i][0] + x,
                                              pixels_points_[i][1] + y) -
                                              GetPixelValue(img2_,u + x, v + y);
+                //cout << "pixel error: " << error << endl;
                 Matrix26d J_u_xi = Matrix26d::Zero();
                 Eigen::Vector2d J_img_u = Eigen::Vector2d::Zero();
 
@@ -224,13 +227,17 @@ void JacobianAccumulator::Accumulate_jacobian(const cv::Range &range) {
                 cost_tmp += error * error; // 当前patch的cost
             }
         }//patch的最外层循环
-        if(good_points_inC2) {
-            unique_lock<mutex> lck(hessian_mutex_);
-            H_ += hessian;
-            b_ += bias;
-            cost_ += cost_tmp / good_points_inC2;
-        }
+        //把当前点对应的海塞矩阵和误差相加
+        unique_lock<mutex> lck(hessian_mutex_);
+        H_ += hessian;
+        b_ += bias;
+        cost_ += cost_tmp;
     }
+
+    if(good_points_inC2) {
+        cost_ = cost_ / good_points_inC2;
+    }
+    cout << "good_points_inC2: " << good_points_inC2 << endl;
 }
 
 /**
@@ -241,77 +248,72 @@ void JacobianAccumulator::Accumulate_jacobian(const cv::Range &range) {
  * @param depths -- camera1 看到的深度
  * @param T21 -- camera1 坐标转换到camera2对应的李代数
  */
-void DirectPoseEstimationSingleLayer(const cv::Mat img1,
-                                     const cv::Mat img2,
-                                     const VecVector2d& pixel_points,
-                                     const vector<double>& depths,
-                                     const int& image_index,
-                                     Sophus::SE3d& T21) {
-    double cost = 0, lastcost = 0;
-    JacobianAccumulator jac_accu(img1,img2,pixel_points,depths,T21);
+void DirectPoseEstimationSingleLayer(
+        const cv::Mat &img1,
+        const cv::Mat &img2,
+        const VecVector2d &px_ref,
+        const vector<double> depth_ref,
+        const int& image_index,
+        Sophus::SE3d &T21) {
 
-    //开始循环
-    for(int iter = 0; iter < FLAGS_interations; iter++) {
-        jac_accu.Reset(); //把H_,b_,cost_归零
-        //cv::parallel_for_(cv::Range(0,pixel_points.size()),jac_accu);
-        cv::parallel_for_(cv::Range(0,pixel_points.size()),
-                          std::bind(&JacobianAccumulator::Accumulate_jacobian,&jac_accu,std::placeholders::_1));
-//        jac_accu.Accumulate_jacobian(cv::Range(0,pixel_points.size()));
-        Matrix6d H = jac_accu.Get_Hessian();
-        Vector6d b = jac_accu.Get_bias();
+    const int iterations = 10;
+    double cost = 0, lastCost = 0;
+    auto t1 = chrono::steady_clock::now();
+    JacobianAccumulator jaco_accu(img1, img2, px_ref, depth_ref, T21);
 
-        //解得到在当前T21下的一个小增量，是se(3)的，需要左乘当前的T21得到新的T21
+    for (int iter = 0; iter < iterations; iter++) {
+        jaco_accu.Reset();
+        cv::parallel_for_(cv::Range(0, px_ref.size()),
+                          std::bind(&JacobianAccumulator::Accumulate_jacobian, &jaco_accu, std::placeholders::_1));
+        Matrix6d H = jaco_accu.Get_Hessian();
+        Vector6d b = jaco_accu.Get_bias();
+
+        // solve update and put it into estimation
         Vector6d update = H.ldlt().solve(b);
         T21 = Sophus::SE3d::exp(update) * T21;
-        cost = jac_accu.Get_totalCost(); //目标函数的cost
+        cost = jaco_accu.Get_totalCost();
 
-
-        if(std::isnan(update[0])) {
-            //出现这种可能的情况是因为我们选择的patch黑/白？？H是不可逆的。
-            cout << "update is nan." << endl;
+        if (std::isnan(update[0])) {
+            // sometimes occurred when we have a black or white patch and H is irreversible
+            cout << "update is nan" << endl;
             break;
         }
-        if(iter > 0 && cost > lastcost) {
-            cout << "Cost increased: " << lastcost << " to " << cost << endl;
+        if (iter > 0 && cost > lastCost) {
+            cout << "cost increased: " << cost << ", " << lastCost << endl;
+            break;
+        }
+        if (update.norm() < 1e-3) {
+            // converge
             break;
         }
 
-        if(update[0] < 1e-3) {
-            //收敛
-            break;
-        }
-
-        lastcost = cost;
-        cout << "iteration: " << iter << " cost: " << cost << endl;
+        lastCost = cost;
+        cout << "iteration: " << iter << ", cost: " << cost << endl;
     }
-    cout << "T21: \n"
-         << T21.matrix() << endl;
 
-    //画出投影
+    cout << "T21 = \n" << T21.matrix() << endl;
+    auto t2 = chrono::steady_clock::now();
+    auto time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+    cout << "direct method for single layer: " << time_used.count() << endl;
+
+    // plot the projected pixels here
     cv::Mat img2_show;
     cv::cvtColor(img2, img2_show, CV_GRAY2BGR);
-    VecVector2d projection = jac_accu.Get_projectedPoints();
-    cout << "projected points size: " << projection.size() << endl;
-    cout << "pixel_points size: " << pixel_points.size() << endl;
-
-    for (size_t i = 0; i < pixel_points.size(); ++i) {
-        auto p_ref = pixel_points[i];
+    VecVector2d projection = jaco_accu.Get_projectedPoints();
+    for (size_t i = 0; i < px_ref.size(); ++i) {
+        auto p_ref = px_ref[i];
         auto p_cur = projection[i];
-        cout << "p_cur.x: [" << p_cur.x() <<"] p_cur.y: [" << p_cur.y() << endl;
-        cout << "p_ref.x: [" << p_ref.x() <<"] p_ref.y: [" << p_ref.y() << endl;
-
         if (p_cur[0] > 0 && p_cur[1] > 0) {
             cv::circle(img2_show, cv::Point2f(p_cur[0], p_cur[1]), 2, cv::Scalar(0, 250, 0), 2);
             cv::line(img2_show, cv::Point2f(p_ref[0], p_ref[1]), cv::Point2f(p_cur[0], p_cur[1]),
                      cv::Scalar(0, 250, 0));
         }
     }
+
     std::string title = "current " + std::to_string(image_index) + "th image";
     cv::imshow(title, img2_show);
     cv::waitKey();
 }
-
-
 
 /**
  * multiple pyramid pose estimation using direct method

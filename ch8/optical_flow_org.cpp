@@ -18,14 +18,14 @@ string file_2 = "../LK2.png";  // second image
 class OpticalFlowTracker {
 public:
     OpticalFlowTracker(
-        const Mat &img1_,
-        const Mat &img2_,
-        const vector<KeyPoint> &kp1_,
-        vector<KeyPoint> &kp2_,
-        vector<bool> &success_,
-        bool inverse_ = true, bool has_initial_ = false) :
-        img1(img1_), img2(img2_), kp1(kp1_), kp2(kp2_), success(success_), inverse(inverse_),
-        has_initial(has_initial_) {}
+            const Mat &img1_,
+            const Mat &img2_,
+            const vector<KeyPoint> &kp1_,
+            vector<KeyPoint> &kp2_,
+            vector<bool> &success_,
+            bool inverse_ = true, bool has_initial_ = false) :
+            img1(img1_), img2(img2_), kp1(kp1_), kp2(kp2_), success(success_), inverse(inverse_),
+            has_initial(has_initial_) {}
 
     void calculateOpticalFlow(const Range &range);
 
@@ -49,13 +49,13 @@ private:
  * @param [in] inverse use inverse formulation?
  */
 void OpticalFlowSingleLevel(
-    const Mat &img1,
-    const Mat &img2,
-    const vector<KeyPoint> &kp1,
-    vector<KeyPoint> &kp2,
-    vector<bool> &success,
-    bool inverse = false,
-    bool has_initial_guess = false
+        const Mat &img1,
+        const Mat &img2,
+        const vector<KeyPoint> &kp1,
+        vector<KeyPoint> &kp2,
+        vector<bool> &success,
+        bool inverse = false,
+        bool has_initial_guess = false
 );
 
 /**
@@ -69,12 +69,12 @@ void OpticalFlowSingleLevel(
  * @param [in] inverse set true to enable inverse formulation
  */
 void OpticalFlowMultiLevel(
-    const Mat &img1,
-    const Mat &img2,
-    const vector<KeyPoint> &kp1,
-    vector<KeyPoint> &kp2,
-    vector<bool> &success,
-    bool inverse = false
+        const Mat &img1,
+        const Mat &img2,
+        const vector<KeyPoint> &kp1,
+        vector<KeyPoint> &kp2,
+        vector<bool> &success,
+        bool inverse = false
 );
 
 /**
@@ -94,10 +94,10 @@ inline float GetPixelValue(const cv::Mat &img, float x, float y) {
     float xx = x - floor(x);
     float yy = y - floor(y);
     return float(
-        (1 - xx) * (1 - yy) * data[0] +
-        xx * (1 - yy) * data[1] +
-        (1 - xx) * yy * data[img.step] +
-        xx * yy * data[img.step + 1]
+            (1 - xx) * (1 - yy) * data[0] +
+            xx * (1 - yy) * data[1] +
+            (1 - xx) * yy * data[img.step] +
+            xx * yy * data[img.step + 1]
     );
 }
 
@@ -175,12 +175,12 @@ int main(int argc, char **argv) {
 }
 
 void OpticalFlowSingleLevel(
-    const Mat &img1,
-    const Mat &img2,
-    const vector<KeyPoint> &kp1,
-    vector<KeyPoint> &kp2,
-    vector<bool> &success,
-    bool inverse, bool has_initial) {
+        const Mat &img1,
+        const Mat &img2,
+        const vector<KeyPoint> &kp1,
+        vector<KeyPoint> &kp2,
+        vector<bool> &success,
+        bool inverse, bool has_initial) {
     kp2.resize(kp1.size());
     success.resize(kp1.size());
     OpticalFlowTracker tracker(img1, img2, kp1, kp2, success, inverse, has_initial);
@@ -225,19 +225,19 @@ void OpticalFlowTracker::calculateOpticalFlow(const Range &range) {
                                    GetPixelValue(img2, kp.pt.x + x + dx, kp.pt.y + y + dy);;  // Jacobian
                     if (inverse == false) {
                         J = -1.0 * Eigen::Vector2d(
-                            0.5 * (GetPixelValue(img2, kp.pt.x + dx + x + 1, kp.pt.y + dy + y) -
-                                   GetPixelValue(img2, kp.pt.x + dx + x - 1, kp.pt.y + dy + y)),
-                            0.5 * (GetPixelValue(img2, kp.pt.x + dx + x, kp.pt.y + dy + y + 1) -
-                                   GetPixelValue(img2, kp.pt.x + dx + x, kp.pt.y + dy + y - 1))
+                                0.5 * (GetPixelValue(img2, kp.pt.x + dx + x + 1, kp.pt.y + dy + y) -
+                                       GetPixelValue(img2, kp.pt.x + dx + x - 1, kp.pt.y + dy + y)),
+                                0.5 * (GetPixelValue(img2, kp.pt.x + dx + x, kp.pt.y + dy + y + 1) -
+                                       GetPixelValue(img2, kp.pt.x + dx + x, kp.pt.y + dy + y - 1))
                         );
                     } else if (iter == 0) {
                         // in inverse mode, J keeps same for all iterations
                         // NOTE this J does not change when dx, dy is updated, so we can store it and only compute error
                         J = -1.0 * Eigen::Vector2d(
-                            0.5 * (GetPixelValue(img1, kp.pt.x + x + 1, kp.pt.y + y) -
-                                   GetPixelValue(img1, kp.pt.x + x - 1, kp.pt.y + y)),
-                            0.5 * (GetPixelValue(img1, kp.pt.x + x, kp.pt.y + y + 1) -
-                                   GetPixelValue(img1, kp.pt.x + x, kp.pt.y + y - 1))
+                                0.5 * (GetPixelValue(img1, kp.pt.x + x + 1, kp.pt.y + y) -
+                                       GetPixelValue(img1, kp.pt.x + x - 1, kp.pt.y + y)),
+                                0.5 * (GetPixelValue(img1, kp.pt.x + x, kp.pt.y + y + 1) -
+                                       GetPixelValue(img1, kp.pt.x + x, kp.pt.y + y - 1))
                         );
                     }
                     // compute H, b and set cost;
@@ -283,12 +283,12 @@ void OpticalFlowTracker::calculateOpticalFlow(const Range &range) {
 }
 
 void OpticalFlowMultiLevel(
-    const Mat &img1,
-    const Mat &img2,
-    const vector<KeyPoint> &kp1,
-    vector<KeyPoint> &kp2,
-    vector<bool> &success,
-    bool inverse) {
+        const Mat &img1,
+        const Mat &img2,
+        const vector<KeyPoint> &kp1,
+        vector<KeyPoint> &kp2,
+        vector<bool> &success,
+        bool inverse) {
 
     // parameters
     int pyramids = 4;
