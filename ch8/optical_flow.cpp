@@ -288,7 +288,7 @@ int main(int argc, char* argv[]) {
     * 起点是I1的特征点，终点是估计出来的对应特征点
     */
     Mat img2_single;
-    cv::cvtColor(img_2, img2_single, CV_GRAY2BGR);
+    cv::cvtColor(img_2, img2_single, COLOR_GRAY2BGR);
     for (int i = 0; i < kpts2_single.size(); i++) {
         if (success_single[i]) {
             cv::circle(img2_single, kpts2_single[i].pt, 2, cv::Scalar(0, 250, 0), 2);
@@ -298,7 +298,7 @@ int main(int argc, char* argv[]) {
 
     //multiple 
     Mat img2_multiple;
-    cv::cvtColor(img_2, img2_multiple, CV_GRAY2BGR);
+    cv::cvtColor(img_2, img2_multiple, COLOR_GRAY2BGR);
     for (int i = 0; i < kpts2_multiple.size(); i++) {
         if (success_multiple[i]) {
             cv::circle(img2_multiple, kpts2_multiple[i].pt, 2, cv::Scalar(0, 250, 0), 2);
@@ -308,7 +308,7 @@ int main(int argc, char* argv[]) {
 
     //使用Opencv的方法 
     Mat img2_opencv;
-    cv::cvtColor(img_2, img2_opencv, CV_GRAY2BGR);
+    cv::cvtColor(img_2, img2_opencv, COLOR_GRAY2BGR);
     for (int i = 0; i < pt2.size(); i++) {
         if (status[i]) {
             cv::circle(img2_opencv, pt2[i], 2, cv::Scalar(0, 250, 0), 2);

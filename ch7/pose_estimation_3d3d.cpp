@@ -54,8 +54,8 @@ int main(int argc,char* argv[]) {
     // }
 
     //read image from disk
-    Mat img_1 = imread(img_file1,CV_LOAD_IMAGE_COLOR);
-    Mat img_2 = imread(img_file2,CV_LOAD_IMAGE_COLOR);
+    Mat img_1 = imread(img_file1,cv::IMREAD_COLOR);
+    Mat img_2 = imread(img_file2,cv::IMREAD_COLOR);
     assert(img_1.data != nullptr && img_2.data != nullptr);
     
     vector<DMatch> matches;
@@ -63,8 +63,8 @@ int main(int argc,char* argv[]) {
     //找到两张图像的特征匹配对
     find_feature_matches(img_1,img_2,keypoints_1,keypoints_2,matches);
     //读入深度图像
-    Mat depth_image1 = imread(img_file3,CV_LOAD_IMAGE_UNCHANGED);
-    Mat depth_image2 = imread(img_file4,CV_LOAD_IMAGE_UNCHANGED);
+    Mat depth_image1 = imread(img_file3,IMREAD_UNCHANGED);
+    Mat depth_image2 = imread(img_file4,IMREAD_UNCHANGED);
 
     Mat K = (Mat_<double>(3, 3) << 520.9, 0, 325.1, 0, 521.0, 249.7, 0, 0, 1);
     vector<Point3f> pts1_3d;

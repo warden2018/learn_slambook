@@ -30,8 +30,8 @@ int main(int argc,char* argv[]) {
     }
 
     //read image from disk
-    Mat img_1 = imread(argv[1],CV_LOAD_IMAGE_COLOR);
-    Mat img_2 = imread(argv[2],CV_LOAD_IMAGE_COLOR);
+    Mat img_1 = imread(argv[1],cv::IMREAD_COLOR);
+    Mat img_2 = imread(argv[2],cv::IMREAD_COLOR);
     assert(img_1.data != nullptr && img_2.data != nullptr);
     
     vector<DMatch> matches;
@@ -137,7 +137,7 @@ void pose_estimation_2d2d(vector<KeyPoint> &keypoints_1,
     //本质矩阵(Essential Matrix)是三维空间P点在不同的相机坐标系下形成的约束
     //这就是为什么求基础矩阵时候不需要传入相机内参数，但是计算本质矩阵时候需要传入相机的内参数，把像素坐标转换成相机坐标
     Mat fundamental_matrix; //基础矩阵：左右两侧的点坐标系是图像坐标系
-    fundamental_matrix = findFundamentalMat(points_1,points_2,CV_FM_8POINT); // 八点法求基础矩阵，还有其他解法
+    fundamental_matrix = findFundamentalMat(points_1,points_2,FM_8POINT); // 八点法求基础矩阵，还有其他解法
     cout << "Fundamental matrix is: " << endl << fundamental_matrix << endl;
 
     Mat essential_matrix;

@@ -16,8 +16,8 @@ int main(int argc, char* argv[]) {
     }
 
     //read image from disk
-    Mat img_1 = imread(argv[1],CV_LOAD_IMAGE_COLOR);
-    Mat img_2 = imread(argv[2],CV_LOAD_IMAGE_COLOR);
+    Mat img_1 = imread(argv[1],cv::IMREAD_COLOR);
+    Mat img_2 = imread(argv[2],cv::IMREAD_COLOR);
     assert(img_1.data != nullptr && img_2.data != nullptr);
 
     vector<KeyPoint> keypoints_1, keypoints_2;

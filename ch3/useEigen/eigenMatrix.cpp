@@ -2,6 +2,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <ctime>
+#include <Eigen/Geometry>
 
 using namespace std;
 using namespace Eigen;
@@ -97,6 +98,24 @@ int main(int argc,char* argv[]){
     cout << "Time of ldlt decomposition is: " << 1000*(clock()-time_stt) / (double) CLOCKS_PER_SEC << "ms" << endl;
     cout << "x= " << x.transpose() << endl;
 
+    //quaternions to rotation matrix
+    //q:=cosA/2 + (u_x i + u_y j + u_z k)sinA/2
+
+    cout << "=======================Eigen quaternion to rotation matrix." << endl;
+    cout << "angle: PI/4" << endl;
+    cout << "q:=cosA/2 + (u_x i + u_y j + u_z k)sinA/2." << endl;
+    auto angle = M_PI / 4;
+    auto sinA = std::sin(angle / 2);
+    auto cosA = std::cos(angle / 2);
+
+    Quaterniond q;
+    q.w() = cosA;
+    q.x() = 0 * sinA;
+    q.y() = 1.0 * sinA;
+    q.z() = 0 * sinA;
+    cout << "R=" << std::endl << q.normalized().toRotationMatrix() << std::endl;
+
+    //Eigen 
     
     return 0;
 }

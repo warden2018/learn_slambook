@@ -63,10 +63,17 @@ using namespace Eigen;
 
 
 int main(int argc,char **argv){
-  //rotation matrix: rotate along z axis
-  Matrix3d R = AngleAxisd(M_PI/2,Vector3d(0,0,1)).toRotationMatrix();
+  //rotation matrix: rotate along z axis with 60 degree
+  Matrix3d R = AngleAxisd(M_PI/3,Vector3d(0,0,1)).toRotationMatrix();
   Quaterniond q(R);//construct quaternion from rotation matrix
+  //绕某个轴(u_x,u_y,u_z)旋转角度A,四元数的计算公式就是：q:=cosA/2 + (u_x i + u_y j + u_z k)sinA/2
+  cout << "quaternion array (w,x,y,z): " << q.w() << ", "
+                  << q.x()  << ", "
+                  << q.y()  << ", "
+                  << q.z() << endl;
 
+  //expected output: quaternion array (w,x,y,z): 0.866025, 0, 0, 0.5
+  
   //construct so(3)
   Sophus::SO3d SO3_R(R);
   Sophus::SO3d SO3_q(q);
@@ -94,7 +101,14 @@ int main(int argc,char **argv){
   Sophus::SE3d SE3_qt(q,t);
   cout << "SE(3) from matrix: \n" << SE3_Rt.matrix() << endl;
   cout << "SE(3) from quaternion: \n" << SE3_qt.matrix() << endl;
-
+  //SE3 to quaternion and translation
+  cout << "SE(3) to translation: " << endl << SE3_Rt.translation().transpose() << endl;
+  cout << "SE(3) to rotation matrix: " << endl << SE3_Rt.rotationMatrix()<< endl;
+  Quaterniond from_se3(SE3_Rt.rotationMatrix());
+  cout << "SE(3) to quaternion (w,x,y,z): " << endl << "(" << from_se3.w() << ", " <<
+                                from_se3.x() << ", " <<
+                                from_se3.y() << ", " <<
+                                from_se3.z() << ")" << endl;
   //6 dimension for se(3)
   typedef Eigen::Matrix<double,6,1> Vector6d;
   Vector6d se3 = SE3_Rt.log();
